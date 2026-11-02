@@ -1,0 +1,17 @@
+# ==============================================================================
+# TRAFFICSENSE - CONFIGURACIÓN DEL DATASET DE CASCOS (YOLO)
+# ==============================================================================
+# Clases:
+#   0: helmet    (motociclista u ocupante con casco de seguridad)
+#   1: no_helmet (motociclista u ocupante sin casco de seguridad)
+# ==============================================================================
+
+path: ../data/processed  # Directorio raíz del dataset procesado
+train: images/train      # Subconjunto de entrenamiento (70%)
+val: images/val          # Subconjunto de validación (20%)
+test: images/test        # Subconjunto de prueba independiente (10%)
+
+# Definición de clases
+names:
+  0: helmet
+  1: no_helmet
