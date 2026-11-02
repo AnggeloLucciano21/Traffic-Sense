@@ -1,0 +1,24 @@
+# ==============================================================================
+# TRAFFICSENSE - DEPENDENCIAS DEL PROYECTO (Python >= 3.10, compatible con 3.12)
+# ==============================================================================
+# Universidad Nacional de San Martín (UNSM) - Proyectos de Inteligencia Artificial
+# ==============================================================================
+
+# 1. Visión por Computadora y Deep Learning
+ultralytics>=8.3.0            # Inferencia y entrenamiento de modelos YOLO (YOLOv8 / YOLO11)
+opencv-python>=4.9.0.80       # Captura de video, dibujo geométrico, redimensionado y filtros
+Pillow>=10.3.0                # Manipulación de imágenes para evidencias y visor de interfaz
+supervision>=0.22.0           # Utilidades para tracking (ByteTrack), zonas de conteo y anotadores
+
+# 2. Manipulación de Datos y Cálculos Vectoriales
+numpy>=1.26.0                 # Operaciones matriciales, cálculo de IoU/IoA y producto vectorial
+pandas>=2.2.0                 # Procesamiento tabular, agregación horaria y exportación a CSV
+
+# 3. Interfaz de Usuario / Panel Web de Monitoreo
+streamlit>=1.38.0             # Dashboard interactivo con pestañas de monitoreo e historial
+
+# 4. Configuración del Sistema
+PyYAML>=6.0.1                 # Lectura y parseo del archivo configs/config.yaml
+
+# 5. Pruebas Automatizadas y Calidad de Código
+pytest>=8.2.0                 # Framework para ejecución de pruebas unitarias y de integración
