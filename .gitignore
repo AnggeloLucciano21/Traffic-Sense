@@ -218,3 +218,48 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ==============================================================================
+# TrafficSense - Reglas Específicas del Proyecto
+# ==============================================================================
+
+# Modelos y pesos pesados de Deep Learning
+*.pt
+*.onnx
+*.engine
+models/*
+!models/.gitkeep
+
+# Videos crudos y procesados
+*.mp4
+*.avi
+*.mov
+*.mkv
+data/raw_videos/*
+!data/raw_videos/.gitkeep
+data/output/*
+!data/output/.gitkeep
+
+# Datasets y anotaciones
+data/datasets/*
+!data/datasets/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Recortes de evidencias visuales (privacidad y tamaño)
+data/evidence/*
+!data/evidence/.gitkeep
+
+# Bases de datos SQLite locales
+data/database/*.db
+data/database/*.sqlite
+data/database/*.sqlite3
+data/database/*-journal
+!data/database/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+
+# Salidas de entrenamiento y validación de YOLO (Ultralytics)
+runs/
+

@@ -1,0 +1,100 @@
+# ==============================================================================
+# TRAFFICSENSE - ARCHIVO DE CONFIGURACIÓN PRINCIPAL
+# ==============================================================================
+# Proyecto: TrafficSense - Monitoreo de flujo vehicular y detección de motociclistas
+# Curso: Proyectos de Inteligencia Artificial
+# Universidad Nacional de San Martín (UNSM) - Tarapoto, Perú
+#
+# NOTA METODOLÓGICA IMPORTANTE:
+# Los valores aquí definidos son PARÁMETROS INICIALES DE DESARROLLO (Fase 1).
+# No corresponden a resultados experimentales validados ni a métricas definitivas.
+# Cada umbral será calibrado y optimizado en las fases posteriores.
+# ==============================================================================
+
+project:
+  name: "TrafficSense"
+  version: "0.1.0-alpha"
+  institution: "Universidad Nacional de San Martín"
+  faculty: "Ingeniería de Sistemas e Informática"
+  course: "Proyectos de Inteligencia Artificial"
+  academic_unit: "Unidad 2 - Hito 2 (Semana 10)"
+  target_device: "cpu" # Opciones: 'cpu' o 'cuda' (ajustable según hardware local)
+
+video:
+  # Fuente de entrada: ruta local a video (.mp4/.avi), índice de cámara (0, 1) o URL RTSP
+  source: "data/raw_videos/sample_traffic.mp4"
+  camera_id: "CAM-01-TARAPOTO"
+  camera_name: "Cámara 01 - Av. Principal (Tarapoto)"
+  # Control de tasa de procesamiento (valores iniciales de desarrollo)
+  target_fps: 15
+  resize_width: 1280
+  resize_height: 720
+  display_annotations: true
+
+detection:
+  # Detector base de tráfico preentrenado en Microsoft COCO
+  # Detecta automóviles, motocicletas, buses, camiones y personas con alta precisión
+  vehicle_model_path: "models/yolo11n.pt" # Variante Nano para compatibilidad con CPU
+  confidence_threshold: 0.50 # Umbral de confianza inicial (filtra falsos positivos)
+  iou_threshold: 0.45 # Umbral NMS (Non-Maximum Suppression) inicial
+  # Clases COCO oficiales de interés para TrafficSense:
+  # 0: person, 2: car, 3: motorcycle, 5: bus, 7: truck
+  target_classes:
+    - 0
+    - 2
+    - 3
+    - 5
+    - 7
+
+tracking:
+  # Algoritmo de seguimiento multi-objeto
+  tracker_type: "bytetrack"
+  track_high_thresh: 0.50 # Umbral para la primera asociación (alta confianza)
+  track_low_thresh: 0.10 # Umbral para la segunda asociación (detecciones de baja confianza / oclusiones)
+  new_track_thresh: 0.60 # Umbral para inicializar una nueva trayectoria
+  track_buffer: 90 # Fotogramas para mantener en memoria una trayectoria inactiva (~3 s a 30 FPS)
+  match_thresh: 0.80 # Umbral de coincidencia de costos IoU
+
+counting:
+  # Línea virtual de conteo en coordenadas de imagen [x, y]
+  # Configuración inicial genérica, sujeta a calibración por perspectiva de cámara
+  line_p1: [100, 450]
+  line_p2: [1180, 450]
+  # Punto de anclaje de la caja para evaluar el cruce (contacto con asfalto)
+  anchor_point: "bottom_center"
+  prevent_double_counting: true
+
+helmet:
+  # ============================================================================
+  # DETECTOR ESPECIALIZADO DE CASCO
+  # REGLA TÉCNICA ESTRICTA: Inicialmente NO DISPONIBLE.
+  # El modelo 'helmet_yolo11n.pt' requiere entrenamiento previo en Google Colab / Kaggle.
+  # Mientras no exista el archivo de pesos, el sistema reportará 'SIN_MODELO_CASCO'.
+  # ============================================================================
+  model_available: false
+  model_path: "models/helmet_yolo11n.pt"
+  default_status: "SIN_MODELO_CASCO"
+  
+  # Parámetros preliminares de la regla de infracción (pendientes de validación experimental):
+  rider_moto_ioa_threshold: 0.35 # IoA mínimo entre persona y motocicleta extendida
+  moto_upper_expansion_ratio: 0.35 # Expansión vertical hacia arriba para capturar cabezas
+  head_roi_ratio: 0.35 # Tercio superior del ocupante para delimitar la región craneal
+  
+  # Ventana temporal multi-cuadro para confirmación de infracción (evita parpadeos):
+  window_size_frames: 8 # Longitud de la ventana deslizante (N)
+  min_confirm_frames: 5 # Votos mínimos requeridos para confirmar infracción (K de N)
+  deduplicate_alerts: true # Garantiza exactamente una alerta por track_id
+
+database:
+  db_type: "sqlite"
+  db_path: "data/database/trafficsense.db"
+  auto_create_schema: true
+  backup_interval_minutes: 60
+
+privacy:
+  # Cumplimiento de la Ley N.º 29733 (Ley de Protección de Datos Personales de Perú)
+  # Difumina rostros y placas en los recortes guardados como evidencia visual
+  apply_gaussian_blur: true
+  blur_kernel_size: [21, 21]
+  evidence_dir: "data/evidence/"
+  save_evidence_margin_px: 15
