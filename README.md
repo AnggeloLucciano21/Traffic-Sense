@@ -2,199 +2,215 @@
 
 > **Monitoreo de flujo vehicular y detección de motociclistas sin casco mediante YOLO y tracking multi-objeto**
 
-* **Institución:** Universidad Nacional de San Martín (UNSM)
+* **Institución:** Universidad Nacional de San Martín (UNSM) — Tarapoto, San Martín, Perú
 * **Facultad:** Ingeniería de Sistemas e Informática
 * **Curso:** Proyectos de Inteligencia Artificial
-* **Ubicación:** Tarapoto, San Martín, Perú
+* **Estado:** Primera versión funcional operativa (Fases 1, 2, 3, 4 y 5 integradas)
 
 ---
 
 ## 1. Descripción General del Proyecto
 
-**TrafficSense** es un sistema de visión por computadora diseñado para analizar secuencias de video de tránsito urbano. Su propósito es responder a la problemática de seguridad vial y movilidad en la región San Martín, caracterizada por un parque automotor compuesto predominantemente por motocicletas.
+**TrafficSense** es un sistema de visión por computadora diseñado para analizar secuencias de video de tránsito urbano y responder a la problemática de seguridad vial y movilidad en la región San Martín, caracterizada por un parque automotor compuesto mayoritariamente por motocicletas.
 
-El sistema contempla de manera progresiva:
-1. Conteo y aforo vehicular clasificado (`car`, `motorcycle`, `bus`, `truck`) mediante líneas virtuales.
-2. Identificación persistente de vehículos en movimiento con identificadores únicos (`track_id`).
-3. Asociación espacial entre motocicletas y sus ocupantes (conductor y acompañante).
-4. Evaluación del uso de casco de seguridad cuando se integre un detector especializado.
-5. Almacenamiento local de aforos y alertas en SQLite.
-6. Visualización de estadísticas y revisión de evidencias en un panel web (Streamlit).
-
----
-
-## 2. Estado Actual del Desarrollo (Fase 1: Estructura Inicial)
-
-> [!NOTE]
-> **Aclaración sobre el estado real del software:**  
-> El proyecto se encuentra actualmente en la **Fase 1 (Estructura modular, dependencias y configuración inicial)**.  
-> * **Lo que ya existe:** Estructura de directorios, configuración centralizada (`configs/config.yaml`), especificación de dependencias (`requirements.txt`), reglas de exclusión en Git (`.gitignore`) y pruebas unitarias de configuración.
-> * **Lo que aún NO está implementado:** La inferencia con modelos YOLO, el tracking con ByteTrack, el conteo vehicular por línea virtual, la base de datos SQLite y el panel Streamlit se implementarán progresivamente en las fases 2 a 5.
-> * El detector de cascos se encuentra explícitamente configurado en estado `SIN_MODELO_CASCO` hasta que se realice el entrenamiento correspondiente en Google Colab/Kaggle.
+El sistema implementa de forma modular:
+1. **Detección vehicular y peatonal** mediante Ultralytics YOLO (`yolo11n.pt`) sobre clases oficiales de COCO (`car`, `motorcycle`, `bus`, `truck`, `person`).
+2. **Seguimiento multi-objeto (ByteTrack)** que asigna identificadores únicos persistentes (`track_id`) a través de los fotogramas y gestiona oclusiones temporales.
+3. **Aforo vehicular por cruce de línea virtual** mediante cálculo de producto cruz 2D sobre el punto inferior central de las llantas, con detección del sentido de circulación (`Entrada` / `Salida`) y prevención estricta de doble conteo.
+4. **Asociación Persona–Motocicleta** con soporte para múltiples ocupantes (conductor y acompañante) mediante Intersección sobre Área ($\text{IoA} \ge 0.35$) sobre la caja extendida de la moto y extracción del tercio craneal (*Head ROI*).
+5. **Regla de casco y confirmación temporal** mediante ventana deslizante ($K=5$ de $N=8$ cuadros), reporte transparente `SIN_MODELO_CASCO` cuando no se dispone de pesos especializados y deduplicación de alertas por motocicleta.
+6. **Almacenamiento transaccional en SQLite** (`trafficsense.db`) con 3 tablas estructuradas (`sesiones_monitoreo`, `conteos_vehiculares`, `alertas_infraccion`).
+7. **Generación de recortes de evidencia visual** (`.jpg`) con difuminado Gaussiano de rostros y placas en observancia de la **Ley N.º 29733 (Ley de Protección de Datos Personales de Perú)**.
+8. **Dashboard interactivo en Streamlit** con visor de video en vivo, KPIs en tiempo real, gráfico de flujo horario, galería de evidencias, calibración de línea virtual y exportador CSV.
 
 ---
 
-## 3. Tecnologías Previstas
-
-La arquitectura del sistema está diseñada enteramente en **Python (>= 3.10, compatible con 3.12)**:
-
-* **Visión por Computadora:** [Ultralytics YOLO](https://docs.ultralytics.com/) (`yolo11n.pt` para detección vehicular general y `helmet_yolo11n.pt` para cascos).
-* **Procesamiento de Video:** [OpenCV](https://opencv.org/) (`opencv-python`).
-* **Seguimiento Multi-Objeto:** [ByteTrack](https://docs.ultralytics.com/modes/track) (asociación en dos etapas mediante Filtro de Kalman e IoU).
-* **Persistencia de Datos:** [SQLite 3](https://docs.python.org/3/library/sqlite3.html) (almacenamiento relacional local sin servidor).
-* **Panel de Control / Dashboard:** [Streamlit](https://streamlit.io/) (interfaz reactiva de monitoreo e historial de alertas).
-* **Manipulación de Datos:** Pandas y NumPy.
-* **Pruebas Automatizadas:** `pytest` y `unittest`.
-
----
-
-## 4. Arquitectura Conceptual
-
-El flujo de procesamiento sigue una secuencia modular en 7 etapas desacopladas:
+## 2. Arquitectura del Sistema
 
 ```text
-[Video de Entrada] 
-       │
-       ▼
-[1. Preprocesamiento] (Redimensionado, ROI, control de FPS)
-       │
-       ▼
-[2. Detección Base COCO] (yolo11n.pt: autos, motos, buses, camiones, personas)
-       │
-       ▼
-[3. Seguimiento ByteTrack] (Asignación y persistencia de track_id)
-       │
-       ├─────────────────────────────────────────┐
-       ▼                                         ▼
-[4A. Línea Virtual de Conteo]        [4B. Asociación Moto ↔ Ocupantes]
-(Cruce vectorial y deduplicación)    (IoA >= 0.35 sobre caja extendida)
-       │                                         │
-       │                                         ▼
-       │                             [5. Detector de Casco]
-       │                             (Si existe: helmet_yolo11n.pt en Head ROI;
-       │                              Si no: Estado 'SIN_MODELO_CASCO')
-       │                                         │
-       │                                         ▼
-       │                             [Ventana Temporal K de N Cuadros]
-       │                             (Confirmación y deduplicación de alerta)
-       │                                         │
-       └────────────────────┬────────────────────┘
-                            ▼
-              [6. Persistencia en SQLite]
-              (trafficsense.db + data/evidence/crop.jpg con difuminado)
-                            │
-                            ▼
-              [7. Panel de Monitoreo Streamlit]
-              (Monitoreo en vivo, KPIs, historial y exportación CSV)
+[Video de Entrada (MP4 / Cámara / RTSP)] 
+                   │
+                   ▼
+       [1. VideoStream (OpenCV)]
+    (Redimensionado y control de FPS)
+                   │
+                   ▼
+     [2. YOLODetector (yolo11n.pt)]
+  (Detección COCO: car, moto, bus, truck, person)
+                   │
+                   ▼
+      [3. TrackerManager (ByteTrack)]
+        (Asignación de track_id único)
+                   │
+         ┌─────────┴─────────────────────────┐
+         ▼                                   ▼
+[4. LineCounter (Línea Virtual)]    [5. HelmetInfractionRule]
+- Producto cruz 2D en llantas       - Asociación Moto ↔ Ocupantes (IoA >= 0.35)
+- Sentido: Entrada / Salida         - Extracción Head ROI craneal
+- Anti-duplicados (counted_ids)     - Ventana temporal K de N cuadros
+         │                          - Modo honesto: SIN_MODELO_CASCO
+         │                          - Deduplicación (alerted_moto_ids)
+         │                                   │
+         └─────────────────┬─────────────────┘
+                           ▼
+              [6. DatabaseManager (SQLite)]
+         - Base de datos: data/database/trafficsense.db
+         - Recortes JPG:  data/evidence/ (con difuminado Ley 29733)
+                           │
+                           ▼
+          [7. Dashboard Web (Streamlit)]
+   - Pestaña 1: Monitoreo en vivo, KPIs, gráfico de aforo y alertas
+   - Pestaña 2: Calibración de línea, revisión humana y exportar CSV
 ```
 
 ---
 
-## 5. Estructura del Repositorio
+## 3. Estructura del Repositorio
 
 ```text
 Traffic-Sense/
 │
 ├── configs/
-│   └── config.yaml               # Parámetros globales del sistema
+│   ├── config.yaml                    # Parámetros globales del sistema y umbrales
+│   └── dataset_helmet.yaml            # Configuración YOLO para entrenamiento de cascos
 │
 ├── data/
-│   ├── raw_videos/               # Videos crudos de prueba y de San Martín
-│   ├── datasets/                 # Datasets públicos de casco (Kaggle/Roboflow)
-│   ├── processed/                # Dataset curado y particionado (train/val/test)
-│   ├── output/                   # Videos anotados exportados
-│   ├── evidence/                 # Recortes JPG de alertas (con difuminado)
-│   └── database/                 # Archivo de base de datos SQLite (trafficsense.db)
+│   ├── raw_videos/
+│   │   ├── .gitkeep
+│   │   └── sample_traffic.mp4         # Video de prueba generado para validación
+│   ├── datasets/                      # Almacén de datasets de entrenamiento
+│   ├── processed/                     # Dataset procesado (train/val/test)
+│   ├── output/                        # Videos anotados exportados y reportes CSV
+│   ├── evidence/                      # Recortes JPG de alertas con difuminado
+│   └── database/
+│       └── trafficsense.db            # Base de datos SQLite relacional
 │
-├── models/                       # Pesos de modelos (.pt, .onnx)
+├── models/
+│   ├── yolo11n.pt                     # Pesos oficiales COCO (descarga automática)
+│   └── helmet_yolo11n.pt              # Pesos especializados de cascos (post-entrenamiento)
 │
-├── notebooks/                    # Notebooks de entrenamiento y experimentación
+├── notebooks/
+│   └── 01_train_helmet_yolo11.ipynb   # Notebook reproducible para Google Colab / Kaggle
 │
-├── scripts/                      # Scripts de utilidad (conversión, verificación de datos)
+├── scripts/
+│   ├── generate_sample_video.py       # Generador de video de tráfico para pruebas
+│   ├── convert_voc_to_yolo.py         # Conversor de PASCAL VOC (XML) a YOLO TXT
+│   ├── split_dataset_by_video.py      # Partición 70/20/10 agrupada por video (anti-leakage)
+│   └── verify_dataset.py              # Auditoría de coordenadas en [0,1] e integridad
 │
-├── src/                          # Código fuente modular
+├── src/
 │   ├── __init__.py
-│   ├── config_loader.py          # Lector y validador de configs/config.yaml
-│   ├── video/                    # Adquisición y streaming de video
-│   ├── detection/                # Wrappers de modelos YOLO
-│   ├── tracking/                 # Gestión de ByteTrack y trayectorias
-│   ├── rules/                    # Geometría, conteo de línea y regla de casco
-│   ├── database/                 # Gestor de base de datos SQLite
-│   └── utils/                    # Anotaciones visuales y difuminado de privacidad
+│   ├── config_loader.py               # Cargador robusto de configs/config.yaml
+│   ├── pipeline.py                    # Orquestador del flujo cuadro a cuadro y CLI
+│   ├── video/
+│   │   ├── __init__.py
+│   │   └── video_stream.py            # Captura y streaming con OpenCV
+│   ├── detection/
+│   │   ├── __init__.py
+│   │   └── yolo_detector.py           # Wrapper YOLOv8 / YOLO11 para vehículos y cascos
+│   ├── tracking/
+│   │   ├── __init__.py
+│   │   └── tracker_manager.py         # Seguimiento con ByteTrack y ciclo de vida de tracks
+│   ├── rules/
+│   │   ├── __init__.py
+│   │   ├── geometry.py                # IoU, IoA, expansión de cajas y cruce vectorial
+│   │   ├── line_counter.py            # Cruce de línea virtual, sentidos y anti-duplicados
+│   │   └── helmet_rule.py             # Asociación Persona-Moto y confirmación multi-cuadro
+│   ├── database/
+│   │   ├── __init__.py
+│   │   └── db_manager.py              # Gestor SQLite (sesiones, aforo, alertas y CSV)
+│   └── utils/
+│       ├── __init__.py
+│       └── visualizer.py              # Dibujo de cajas, telemetría y recortes con privacidad
 │
-├── app/                          # Interfaz de usuario en Streamlit
+├── app/
+│   └── streamlit_app.py               # Panel web de monitoreo (Pestaña 1 y Pestaña 2)
 │
-├── tests/                        # Suite de pruebas automatizadas
+├── tests/
 │   ├── __init__.py
-│   └── test_config.py            # Pruebas de configuración e importación
+│   ├── test_config.py                 # Pruebas de configuración y parser alternativo
+│   ├── test_geometry_and_line.py      # Pruebas de IoU, IoA y conteo por línea
+│   ├── test_helmet_rule.py            # Pruebas de asociación multi-ocupante y casco
+│   └── test_db_manager.py             # Pruebas de base de datos SQLite y exportación CSV
 │
-├── docs/                         # Documentación técnica y académica adicional
-│
-├── requirements.txt              # Especificación de dependencias del proyecto
-├── README.md                     # Guía principal del proyecto
-├── .gitignore                    # Reglas de exclusión para Git
-└── Trafficsense.md               # Plan maestro técnico y metodológico
+├── requirements.txt                   # Especificación reproducible de dependencias
+├── .gitignore                         # Exclusión de pesos pesados, videos y evidencias
+├── README.md                          # Documentación técnica integral
+└── Trafficsense.md                    # Plan maestro original
 ```
 
 ---
 
-## 6. Requisitos Preliminares y Preparación del Entorno
+## 4. Guía Rápida de Instalación y Ejecución en Windows
 
-### Requisitos del Sistema
-* **Sistema Operativo:** Windows 10/11, Linux (Ubuntu 20.04+) o macOS.
-* **Python:** Versión `>= 3.10` y `<= 3.12` (verificado en Python 3.12.6).
-* **Git:** Para control de versiones.
+### Paso 1: Activar el Entorno Virtual (`venv`)
+Abra PowerShell en la carpeta raíz del proyecto y active el entorno virtual:
 
-### Configuración del Entorno Virtual (Recomendado)
+```powershell
+.\venv\Scripts\Activate.ps1
+```
 
-1. **Clonar el repositorio o abrir la carpeta del proyecto:**
-   ```bash
-   cd Traffic-Sense
-   ```
-
-2. **Crear un entorno virtual aislado:**
-   ```bash
-   python -m venv venv
-   ```
-
-3. **Activar el entorno virtual:**
-   * En Windows (PowerShell):
-     ```powershell
-     .\venv\Scripts\Activate.ps1
-     ```
-   * En Windows (CMD):
-     ```cmd
-     .\venv\Scripts\activate.bat
-     ```
-   * En Linux / macOS:
-     ```bash
-     source venv/bin/activate
-     ```
-
-4. **Instalación de dependencias (cuando sea autorizado en la fase respectiva):**
-   ```bash
-   pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
+*(Si PowerShell bloquea la ejecución de scripts, ejecute previamente: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`)*.
 
 ---
 
-## 7. Ejecución de Pruebas Iniciales
+### Paso 2: Ejecutar la Suite de Pruebas Automatizadas
+Verifique que los 23 casos de prueba unitaria pasen exitosamente:
 
-Actualmente, el proyecto incluye pruebas de verificación de la estructura y configuración que pueden ejecutarse con el módulo estándar de Python:
-
-```bash
-python -m unittest discover tests -v
-```
-
-Una vez instalado `pytest` en el entorno virtual, las pruebas también podrán ejecutarse mediante:
-
-```bash
+```powershell
 pytest tests/ -v
 ```
 
 ---
 
-## 8. Cumplimiento de Privacidad y Normativa
+### Paso 3: Generar el Video de Prueba Local (Opcional)
+Si desea generar una secuencia de tráfico para demostración inmediata:
 
-En observancia de la **Ley N.º 29733 (Ley de Protección de Datos Personales en el Perú)**, las imágenes y fotogramas guardados como evidencia visual de posibles infracciones son sometidos a un difuminado Gaussiano en los rostros y placas vehiculares para salvaguardar la identidad de los ciudadanos.
+```powershell
+python scripts/generate_sample_video.py
+```
+
+---
+
+### Paso 4: Iniciar el Dashboard en Streamlit
+Inicie la interfaz gráfica interactiva:
+
+```powershell
+streamlit run app/streamlit_app.py
+```
+
+El navegador web se abrirá automáticamente en `http://localhost:8501`. Desde allí podrá:
+* Seleccionar el video de prueba o cargar un video propio.
+* Iniciar y pausar el procesamiento cuadro a cuadro.
+* Observar los KPIs de aforo y el gráfico de tráfico horario.
+* Calibrar las coordenadas de la línea virtual con vista previa.
+* Gestionar las alertas de infracción con revisión humana (`Pendiente`, `Confirmada`, `Descartada`).
+* Exportar reportes en CSV (`RF-09`).
+
+---
+
+### Paso 5: Ejecución por Línea de Comandos (CLI)
+Para procesar un video directamente sin interfaz gráfica y exportar el video anotado:
+
+```powershell
+python -m src.pipeline --source data/raw_videos/sample_traffic.mp4 --save-db --output data/output/demo_anotada.mp4 --display
+```
+
+---
+
+## 5. Estado de la Detección de Casco (`SIN_MODELO_CASCO`)
+
+Por rigor académico y cumplimiento de las directivas del curso:
+* **El sistema NO simula ni inventa detecciones de casco.**
+* Hasta que se complete el entrenamiento del modelo `helmet_yolo11n.pt` en Google Colab con el notebook `notebooks/01_train_helmet_yolo11.ipynb`, el detector de casco se reporta explícitamente en consola y en el dashboard como:
+  ```text
+  SIN_MODELO_CASCO (Modo Base Activo)
+  ```
+* Durante este modo, la detección vehicular general, el seguimiento ByteTrack, el conteo por línea virtual y la asociación espacial Persona-Motocicleta se encuentran **100% operativos con pesos reales**.
+
+---
+
+## 6. Procedimiento para Cerrar el Sistema
+
+* Para detener el dashboard de Streamlit: Presione `Ctrl + C` en la terminal de PowerShell donde se ejecutó `streamlit run`.
+* Para desactivar el entorno virtual: Ejecute el comando `deactivate`.
